@@ -1,12 +1,40 @@
 import streamlit as st
-import matplotlib.pyplot as plt
 import sqlite3
 import pandas as pd
 import numpy as np
+import plotly.express as px
 from sklearn.linear_model import LinearRegression
 
 # ---------------- PAGE CONFIG ----------------
-st.set_page_config(layout="wide")
+st.set_page_config(page_title="Smart Budget Planner", layout="wide")
+
+# ---------------- PREMIUM CSS ----------------
+st.markdown("""
+<style>
+.main {
+    background-color: #0f172a;
+    color: white;
+}
+h1, h2, h3 {
+    color: #e2e8f0;
+}
+.stButton>button {
+    background-color: #22c55e;
+    color: white;
+    border-radius: 10px;
+    height: 3em;
+    width: 100%;
+}
+.stTextInput>div>div>input {
+    border-radius: 10px;
+}
+.stMetric {
+    background-color: #1e293b;
+    padding: 15px;
+    border-radius: 15px;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ---------------- SESSION ----------------
 if "user" not in st.session_state:
@@ -16,25 +44,21 @@ if "user" not in st.session_state:
 conn = sqlite3.connect("budget.db")
 c = conn.cursor()
 
-c.execute("""
-CREATE TABLE IF NOT EXISTS users (
+c.execute("""CREATE TABLE IF NOT EXISTS users (
     username TEXT,
     password TEXT
-)
-""")
+)""")
 
-c.execute("""
-CREATE TABLE IF NOT EXISTS history (
+c.execute("""CREATE TABLE IF NOT EXISTS history (
     username TEXT,
     salary REAL,
     spent REAL,
     remaining REAL
-)
-""")
+)""")
 
 conn.commit()
 
-# ---------------- UI Styling ----------------
+# ---------------- TITLE ----------------
 st.title("💰 Smart Salary Budget Planner")
 st.markdown("## 📊 Plan Smart. Spend Smart. Save Smart.")
 st.divider()
@@ -65,6 +89,7 @@ elif menu == "Login":
         if c.fetchone():
             st.session_state.user = user
             st.sidebar.success(f"Welcome {user}")
+            st.rerun()
         else:
             st.sidebar.error("Invalid credentials")
 
@@ -152,10 +177,20 @@ if st.session_state.user:
         st.write(f"👋 Hello {name}")
         budget, remaining = calculate_budget()
 
+        # PREMIUM METRICS
         col1, col2, col3 = st.columns(3)
-        col1.metric("Salary", f"₹{salary}")
-        col2.metric("Spent", f"₹{sum(budget.values()):.0f}")
-        col3.metric("Remaining", f"₹{remaining:.0f}")
+
+        with col1:
+            st.markdown("### 💰 Income")
+            st.metric("", f"₹{salary}")
+
+        with col2:
+            st.markdown("### 💸 Spent")
+            st.metric("", f"₹{sum(budget.values()):.0f}")
+
+        with col3:
+            st.markdown("### 🏦 Balance")
+            st.metric("", f"₹{remaining:.0f}")
 
         # SAVE HISTORY
         c.execute("INSERT INTO history VALUES (?, ?, ?, ?)",
@@ -166,12 +201,25 @@ if st.session_state.user:
         for k, v in budget.items():
             st.write(f"{k}: ₹{v:.2f}")
 
-        # PIE CHART
+        # PREMIUM CHART
         if budget:
-            fig, ax = plt.subplots()
-            ax.pie(budget.values(), labels=budget.keys(), autopct='%1.1f%%')
-            ax.axis('equal')
-            st.pyplot(fig)
+            df_chart = pd.DataFrame({
+                "Category": list(budget.keys()),
+                "Amount": list(budget.values())
+            })
+
+            fig = px.pie(df_chart, names="Category", values="Amount", hole=0.4)
+            fig.update_layout(template="plotly_dark")
+
+            st.plotly_chart(fig, use_container_width=True)
+
+        # STATUS
+        if remaining > 0:
+            st.success("✅ You are saving money")
+        elif remaining == 0:
+            st.warning("⚠️ No savings left")
+        else:
+            st.error("❌ Overspending detected")
 
         # HISTORY
         st.subheader("📜 History")
@@ -183,7 +231,7 @@ if st.session_state.user:
             df = pd.DataFrame(data, columns=["Salary", "Spent", "Remaining"])
             st.dataframe(df)
 
-            # PREDICTION
+            # AI PREDICTION
             if len(df) >= 3:
                 df["Month"] = range(1, len(df) + 1)
                 model = LinearRegression()
